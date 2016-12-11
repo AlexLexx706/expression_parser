@@ -4,7 +4,7 @@
 #define MAX_VALUE_LENGTH 20
 
 const char START_BRACKET [] = {'{', '[', '('};
-const char END_BRACKET [] = {'}', '}', '}'};
+const char END_BRACKET [] = {'}', ']', ')'};
 const char OPERATORS [] = {'+', '-', '/', '*'};
 const char SIGNS [] = {'+', '-'};
 
@@ -51,12 +51,26 @@ int add_tocken(struct TockenArray * array, struct Tocken * data){
 
     new_buffer[array->size++] = *data;
     array->buffer = new_buffer;
+    int i;
+    char operator;
+
+    /*
+    for (i = 0; i < array->size; i++) {
+        if (array->buffer[i].type == VALUE) {
+            printf("%f ", array->buffer[i].data.value);
+        } else {
+            operator = array->buffer[i].data.operator;
+            printf("%c ", array->buffer[i].data.operator);
+        }
+    }
+    printf("\n");
+    */
     return 0;
 }
 
 int in_sequence(char ch, const char * sequence, unsigned int size) {
     int i = 0;
-    
+
     for (; i < size; i++) {
         if (ch == sequence[i]){
             return 0;
@@ -75,13 +89,19 @@ int reduce_tockens(
         return 1;
     }
 
-    free_tocken_array(out_tockens);
+    if (in_tockens->size == 1) {
+        return add_tocken(out_tockens, &in_tockens->buffer[0]);
+    }
 
-    int error = 0; 
+    free_tocken_array(out_tockens);
+    init_tocken_array(out_tockens);
+
+    int error = 0;
     int i;
 
     //1. выполним все операции умножения, сократим массив
     for (i = 1; i < in_tockens->size - 1; i= i + 2) {
+        printf("operator: %c\n", in_tockens->buffer[i].data.operator);
         if (in_tockens->buffer[i].data.operator == operator) {
             struct Tocken tocken;
             tocken.type = VALUE;
@@ -133,7 +153,16 @@ int compute_expression(struct TockenArray * tockens, double * d_res) {
     struct TockenArray new_tockens;
     init_tocken_array(&new_tockens);
     int error;
-    
+
+    for (i = 0; i < tockens->size; i++) {
+        if (tockens->buffer[i].type == VALUE) {
+            printf("%f ", tockens->buffer[i].data.value);
+        } else {
+            printf("%c ", tockens->buffer[i].data.operator);
+        }
+    }
+    printf("\n");
+
     //1. выполним все операции умножения, сократим массив
     if (error=reduce_tockens(tockens, &new_tockens, '*')) {
         free_tocken_array(&new_tockens);
@@ -166,11 +195,11 @@ int str_to_double(const char * start, const char * end, double * d_res){
     char * ukaszatel = NULL;
 
     //заполним вреенный буффер, исключаем пробелы
-    for (; start < end && buffer != &TEMP_STR_BUFFER[MAX_VALUE_LENGTH];
+    for (; start != end && buffer != &TEMP_STR_BUFFER[MAX_VALUE_LENGTH];
             start++, buffer++) {
         if (*start != ' ') {
             *buffer=*start;
-        } 
+        }
     }
     *buffer = 0;
 
@@ -194,17 +223,18 @@ int extract_value(struct TockenArray * array, const char * start_tocken, const c
     //распарсим значение
 
     double d_res;
-    if (!(error = str_to_double(start_tocken, str, &d_res)))
+    if (error = str_to_double(start_tocken, str, &d_res))
         return error;
 
-    //Добавили значение 
+    //Добавили значение
     struct Tocken tocken = {VALUE, d_res};
-    add_tocken(array, &tocken);
-    return error;
+    return add_tocken(array, &tocken);
 }
 
 int add_operator(struct TockenArray * array, char operator) {
-    struct Tocken tocken = {OPERATOR, operator};
+    struct Tocken tocken;
+    tocken.type = OPERATOR;
+    tocken.data.operator=operator;
     return add_tocken(array, &tocken);
 }
 
@@ -214,9 +244,10 @@ int extract_tockens(struct TockenArray * array, const char ** start_tocken, cons
     //найден оператор
     if (!in_sequence(*str, OPERATORS, sizeof(OPERATORS))) {
         //проверка знака числа
-        if (!array->size) {
-            // не знак числа 
-            if (in_sequence(*str, SIGNS, sizeof(OPERATORS))) {
+        char * st = *start_tocken;
+        if (!array->size && st == str) {
+            // не знак числа
+            if (in_sequence(*str, SIGNS, sizeof(SIGNS))) {
                 fprintf(stderr, "wrong operator: %c\n", *str);
                 return 1;
             }
@@ -228,7 +259,7 @@ int extract_tockens(struct TockenArray * array, const char ** start_tocken, cons
             return error;
         if (error = add_operator(array, *str))
             return error;
-        (*start_tocken)++;
+        *start_tocken = NULL;
     }
     return error;
 }
@@ -247,7 +278,7 @@ int check_empty_multiply_operator(
             return error;
     //Добавим оператор
     } else if (tockens->buffer[tockens->size - 1].type == VALUE) {
-        struct Tocken tocken = {OPERATOR, '*'}; 
+        struct Tocken tocken = {OPERATOR, '*'};
         if (error = add_tocken(tockens, &tocken))
             return error;
     }
@@ -261,7 +292,6 @@ int _analyze_expressions(const char ** in_str, const char * start_bracket, doubl
     int error=0;
     *d_res = 0.0;
     init_tocken_array(&tockens);
-
     while (*str != 0) {
         //поиск конца
         if (start_bracket) {
@@ -277,13 +307,12 @@ int _analyze_expressions(const char ** in_str, const char * start_bracket, doubl
                 // вычислим выражение
                 if (error = _analyze_expressions(in_str, str, d_res))
                     break;
-                start_bracket = NULL;
-
-                // добавим токен в выражение
-                struct Tocken tocken = {VALUE, *d_res}; 
+                 // добавим токен в выражение
+                struct Tocken tocken = {VALUE, *d_res};
 
                 if (error = add_tocken(&tockens, &tocken))
                     break;
+                start_tocken = NULL;
             //окончание выражения
             } else if (!in_sequence(*str, END_BRACKET, sizeof(END_BRACKET))) {
                 //выделим число
@@ -292,22 +321,47 @@ int _analyze_expressions(const char ** in_str, const char * start_bracket, doubl
                 }
                 //вычислим выражение
                 error = compute_expression(&tockens, d_res);
-                break;
+                free_tocken_array(&tockens);
+                return 0;
             // выделение значений и операторов
             } else {
                 if (error=extract_tockens(&tockens, &start_tocken, str))
                     break;
             }
         // поиск начала выражения
-        } else if (!in_sequence(*str, START_BRACKET, sizeof(START_BRACKET))){
+        } else if (!in_sequence(*str, START_BRACKET, sizeof(START_BRACKET))) {
             start_bracket = str;
+
+            if (error = check_empty_multiply_operator(
+                    &tockens, start_tocken, str)) {
+                return error;
+            }
+
+            (*in_str)++;
+            // вычислим выражение
+            if (error = _analyze_expressions(in_str, str, d_res))
+                break;
+            start_bracket = NULL;
+
+            // добавим токен в выражение
+            struct Tocken tocken = {VALUE, *d_res};
+
+            if (error = add_tocken(&tockens, &tocken))
+                break;
+            start_tocken = NULL;
         // выделение значений и операторов
         } else {
             if (error=extract_tockens(&tockens, &start_tocken, str))
                 break;
         }
+
         str = ++(*in_str);
+
+        if (start_tocken == NULL) {
+            start_tocken = str;
+        }
     }
+
     if (start_bracket != NULL) {
         error = 1;
         fprintf(stderr, "expression is not complete\n");
@@ -321,7 +375,7 @@ int _analyze_expressions(const char ** in_str, const char * start_bracket, doubl
             }
         }
 
-        if (!error)  
+        if (!error)
             error = compute_expression(&tockens, d_res);
     // выделим значение
     } else {
@@ -336,14 +390,15 @@ int _analyze_expressions(const char ** in_str, const char * start_bracket, doubl
 
 int analyze_expressions(const char * _str, double * d_res) {
     const char * str = _str;
-    return _analyze_expressions(&str, NULL, d_res);   
+    return _analyze_expressions(&str, NULL, d_res);
 }
 
 
 int main(){
     //const char * expression = "-1( -2 * 3 / [1+ 1] + 1) + 1 + {1 + 2} {12}";
+    const char * expression = "-1(1+2)";
     double d_res;
-    const char * expression = "1";
+    //const char * expression = "1";
     int error = analyze_expressions(expression, &d_res);
 
     if (!error) {
