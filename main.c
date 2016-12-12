@@ -110,7 +110,7 @@ int reduce_tockens(
                         in_tockens->buffer[i + 1].data.value;
                     break;
                 case '-':
-                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value +
+                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value -
                         in_tockens->buffer[i + 1].data.value;
                     break;
             }
@@ -251,6 +251,9 @@ int check_empty_multiply_operator(
 
     // умножения на число
     if (!tockens->size) {
+        if (start_tocken == str)
+            return 0;
+
         //выделим значение
         if (error = extract_value(tockens, start_tocken, str))
             return error;
@@ -386,18 +389,24 @@ int _analyze_expressions(const char ** in_str, const char * start_bracket, doubl
     return error;
 }
 
+const char * find_first_simbol(const char * str) {
+    const char * end = &str[strlen(str) + 1];
+    for (; str != end && *str == ' '; str++){}
+    return str;
+
+}
 int analyze_expressions(const char * _str, double * d_res) {
-    const char * str = _str;
+    const char * str = find_first_simbol(_str);
     return _analyze_expressions(&str, NULL, d_res);
 }
 
 
 int main() {
-    const char * expression = "1+(1/(1*0.78))+2";
-    //const char * expression = "1 + {}";
+    //const char * expression = "1+(1/(1*0.78))+2";
+    const char * expression = "(1+2)";
     double d_res;
     char temp_buffer[120];
-    printf("inpit expression: ");
+    printf("input expression: ");
     //if (!fgets(temp_buffer, sizeof(temp_buffer), stdin)) {
     if (!gets(temp_buffer)) {
         fprintf(stderr, "cannot read line\n");
