@@ -83,14 +83,14 @@ int reduce_tockens(
         return 1;
     }
     int error = 0;
-    int i;
+    int i = 1;
 
     if (in_tockens->size == 1) {
         return 0;
     }
 
     //1. выполним все операции умножения, сократим массив
-    for (i = 1; i < in_tockens->size - 1; i= i + 2) {
+    do {
         if (in_tockens->buffer[i].data.operator == operator) {
             switch (in_tockens->buffer[i].data.operator) {
                 case '*':
@@ -116,8 +116,10 @@ int reduce_tockens(
             }
             remove_tocken(in_tockens, i);
             remove_tocken(in_tockens, i);
+        } else {
+            i = i + 2;
         }
-    }
+    } while(i < in_tockens->size);
     return error;
 }
 
@@ -220,8 +222,7 @@ int extract_tockens(struct TockenArray * tockens, const char ** start_tocken, co
     //найден оператор
     if (!in_sequence(*str, OPERATORS, sizeof(OPERATORS))) {
         //проверка знака числа
-        char * st = *start_tocken;
-        if (!tockens->size && st == str) {
+        if (!tockens->size && *start_tocken == str) {
             // не знак числа
             if (in_sequence(*str, SIGNS, sizeof(SIGNS))) {
                 fprintf(stderr, "wrong operator: %c\n", *str);
@@ -397,6 +398,7 @@ int main() {
     double d_res;
     char temp_buffer[120];
     printf("inpit expression: ");
+    //if (!fgets(temp_buffer, sizeof(temp_buffer), stdin)) {
     if (!gets(temp_buffer)) {
         fprintf(stderr, "cannot read line\n");
         return 1;
