@@ -27,32 +27,41 @@ struct TockenArray{
     unsigned int size;
 };
 
-void init_tocken_array(struct TockenArray * array) {
-    array->buffer = NULL;
-    array->size = 0;
+void init_tocken_array(struct TockenArray * tockens) {
+    tockens->buffer = NULL;
+    tockens->size = 0;
 }
 
-void free_tocken_array(struct TockenArray * array) {
-    if (array->buffer) {
-        free(array->buffer);
+void free_tocken_array(struct TockenArray * tockens) {
+    if (tockens->buffer) {
+        free(tockens->buffer);
     }
-    array->buffer = NULL;
-    array->size = 0;
+    tockens->buffer = NULL;
+    tockens->size = 0;
 }
 
-int add_tocken(struct TockenArray * array, struct Tocken * data){
+int add_tocken(struct TockenArray * tockens, struct Tocken * data) {
     struct Tocken * new_buffer = (struct Tocken *)realloc(
-        array->buffer, (array->size + 1) * sizeof(struct Tocken));
+        tockens->buffer, (tockens->size + 1) * sizeof(struct Tocken));
 
     if (new_buffer == NULL){
         fprintf(stderr, "cannot allocate Tockens buffer\n");
         return 1;
     }
 
-    new_buffer[array->size++] = *data;
-    array->buffer = new_buffer;
+    new_buffer[tockens->size++] = *data;
+    tockens->buffer = new_buffer;
     return 0;
 }
+
+int remove_tocken(struct TockenArray * tockens, int index) {
+    for (; index < tockens->size - 1; index++) {
+        tockens->buffer[index] = tockens->buffer[index + 1];
+    }
+    tockens->size--;
+    return 0;
+}
+
 
 int in_sequence(char ch, const char * sequence, unsigned int size) {
     int i = 0;
@@ -67,33 +76,25 @@ int in_sequence(char ch, const char * sequence, unsigned int size) {
 
 int reduce_tockens(
         struct TockenArray * in_tockens,
-        struct TockenArray * out_tockens,
         char operator) {
 
     if (!in_tockens->size) {
         fprintf(stderr, "empty tockens array\n");
         return 1;
     }
-
-    free_tocken_array(out_tockens);
-    init_tocken_array(out_tockens);
-
-    if (in_tockens->size == 1) {
-        return add_tocken(out_tockens, &in_tockens->buffer[0]);
-    }
-
     int error = 0;
     int i;
+
+    if (in_tockens->size == 1) {
+        return 0;
+    }
 
     //1. выполним все операции умножения, сократим массив
     for (i = 1; i < in_tockens->size - 1; i= i + 2) {
         if (in_tockens->buffer[i].data.operator == operator) {
-            struct Tocken tocken;
-            tocken.type = VALUE;
-
             switch (in_tockens->buffer[i].data.operator) {
                 case '*':
-                    tocken.data.value = in_tockens->buffer[i - 1].data.value *
+                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value *
                         in_tockens->buffer[i + 1].data.value;
                     break;
                 case '/':
@@ -101,35 +102,21 @@ int reduce_tockens(
                         fprintf(stderr, "devide by zerro\n");
                         return 1;
                     }
-                    tocken.data.value = in_tockens->buffer[i - 1].data.value /
+                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value /
                         in_tockens->buffer[i + 1].data.value;
                     break;
                 case '+':
-                    tocken.data.value = in_tockens->buffer[i - 1].data.value +
+                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value +
                         in_tockens->buffer[i + 1].data.value;
                     break;
                 case '-':
-                    tocken.data.value = in_tockens->buffer[i - 1].data.value +
+                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value +
                         in_tockens->buffer[i + 1].data.value;
                     break;
             }
-            if (error = add_tocken(out_tockens, &tocken))
-                return error;
-            in_tockens->buffer[i + 1].data.value = tocken.data.value;
-        } else {
-            if (error = add_tocken(out_tockens, &in_tockens->buffer[i - 1]))
-                return error;
-
-            if (error = add_tocken(out_tockens, &in_tockens->buffer[i]))
-                return error;
+            remove_tocken(in_tockens, i);
+            remove_tocken(in_tockens, i);
         }
-    }
-
-    //Добавим последнее значение
-    if (out_tockens->buffer[out_tockens->size - 1].type == OPERATOR) {
-        if (error = add_tocken(
-                out_tockens, &in_tockens->buffer[in_tockens->size - 1]))
-            return error;
     }
     return error;
 }
@@ -140,8 +127,6 @@ int compute_expression(struct TockenArray * tockens, double * d_res) {
         return 1;
     }
     int i;
-    struct TockenArray new_tockens;
-    init_tocken_array(&new_tockens);
     int error;
 
     for (i = 0; i < tockens->size; i++) {
@@ -154,29 +139,24 @@ int compute_expression(struct TockenArray * tockens, double * d_res) {
     printf("\n");
 
     //1. выполним все операции умножения, сократим массив
-    if (error=reduce_tockens(tockens, &new_tockens, '*')) {
-        free_tocken_array(&new_tockens);
+    if (error=reduce_tockens(tockens, '*')) {
         return error;
     }
 
-    if (error=reduce_tockens(&new_tockens, tockens, '/')) {
-        free_tocken_array(&new_tockens);
+    if (error=reduce_tockens(tockens, '/')) {
         return error;
     }
 
-    if (error=reduce_tockens(tockens, &new_tockens, '+')){
-        free_tocken_array(&new_tockens);
+    if (error=reduce_tockens(tockens, '+')){
         return error;
     }
 
-    if (error=reduce_tockens(&new_tockens, tockens, '-')){
-        free_tocken_array(&new_tockens);
+    if (error=reduce_tockens(tockens, '-')){
         return error;
     }
 
     *d_res = tockens->buffer[0].data.value;
     //printf("res: %f\n", *d_res);
-    free_tocken_array(&new_tockens);
     return error;
 }
 
@@ -416,20 +396,18 @@ int main() {
     //const char * expression = "1 + {}";
     double d_res;
     char temp_buffer[120];
-    /**
     printf("inpit expression: ");
     if (!gets(temp_buffer)) {
         fprintf(stderr, "cannot read line\n");
         return 1;
     }
-    */
     //const char * expression = "1";
-    //int error = analyze_expressions(temp_buffer, &d_res);
-    int error = analyze_expressions(expression, &d_res);
+    int error = analyze_expressions(temp_buffer, &d_res);
+    //int error = analyze_expressions(expression, &d_res);
 
     if (!error) {
-        //printf("expression: %s result: %f\n", temp_buffer, d_res);
-        printf("expression: %s result: %f\n", expression, d_res);
+        printf("expression: %s result: %f\n", temp_buffer, d_res);
+        //printf("expression: %s result: %f\n", expression, d_res);
     }
     return 0;
 }
