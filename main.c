@@ -1,25 +1,37 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define MAX_VALUE_LENGTH 20
+#define NO_ERROR 0
+#define ERROR_EMPTY_EXPRESSION 1
+#define ERROR_WRONG_END_BARACKET 2
+#define ERROR_WRONG_BARACKET 3
+#define ERROR_NOT_IN_SEQUENCE 4
+#define ERROR_EMPTY_STRING 5
+#define ERROR_STRING_TO_LONG 6
+#define ERROR_CONVERT_TO_DOUBLE 7
+#define ERROR_NO_END_BRACKET 8
+#define ERROR_HUGE_VAL 9
 
 const char START_BRACKET [] = {'{', '[', '('};
 const char END_BRACKET [] = {'}', ']', ')'};
 const char LL_OPERATORS [] = {'-', '+'};
 const char HL_OPERATORS [] = {'/', '*'};
 
-int check_end_bracket(char start_bracket, char end_backet) {
+int check_end_bracket(char start_bracket, const char * end_backet) {
     int i = 0;
     for (; i < sizeof(START_BRACKET); i++) {
         if (START_BRACKET[i] == start_bracket) {
-            if (END_BRACKET[i] != end_backet) {
-                fprintf(stderr, "wrong end backet: %c", end_backet);
+            if (END_BRACKET[i] != *end_backet) {
+                fprintf(stderr, "не верная скобка: '^%s'\n", end_backet);
+                return ERROR_WRONG_END_BARACKET;
             }
-            return 0;
+            return NO_ERROR;
         }
     }
-    fprintf(stderr, "compare no bracket start:%c, end: %c", start_bracket, end_backet);
-    return 2;
+    fprintf(stderr, "ошибка в логике программы, скобки не сравнимые скобки start:%c, end: %c\n", start_bracket, *end_backet);
+    return ERROR_WRONG_BARACKET;
 }
 
 int in_sequence(char ch, const char * sequence, unsigned int size) {
@@ -27,10 +39,10 @@ int in_sequence(char ch, const char * sequence, unsigned int size) {
 
     for (; i < size; i++) {
         if (ch == sequence[i]){
-            return 0;
+            return NO_ERROR;
         }
     }
-    return 1;
+    return ERROR_NOT_IN_SEQUENCE;
 }
 
 int is_ll(char ch){
@@ -51,44 +63,25 @@ int is_eb(char ch){
 
 
 
-int str_to_double(const char * start, const char * end, double * d_res){
-    char buffer[MAX_VALUE_LENGTH + 1];
-    char * ch = buffer;
+int str_to_double(const char * start, const char * end, double * d_res) {
+    char * endptr;
+    *d_res = strtod(start, &endptr);
 
-    //заполним вреенный буффер, исключаем пробелы
-    for (; start != end && ch != &buffer[MAX_VALUE_LENGTH];
-            start++) {
-        if (*start != ' ') {
-            *ch = *start;
-            ch++;
-        }
-    }
-    if (ch == buffer) {
-        *d_res = 0.0;
-        return 1;
+    if (HUGE_VAL == *d_res) {
+        fprintf(stderr, "очень длинное число: '^%s'\n", start);
+        return ERROR_HUGE_VAL;
     }
 
-    *ch = 0;
-
-    // очень длинная строка
-    if (ch == &buffer[MAX_VALUE_LENGTH]){
-        fprintf(stderr, "string: %s len > %d\n", buffer, MAX_VALUE_LENGTH);
-        return 2;
-    }
-
-    char * ukaszatel = NULL;
-    *d_res = strtod(buffer, &ukaszatel);
-
-    if (*ukaszatel != 0){
-        fprintf(stderr, "cannot convert: %s to double\n", buffer);
-        return 1;
+    if (*d_res == 0) {
+        fprintf(stderr, "неудалось преобразовать в double: '^%s'\n", start);
+        return ERROR_CONVERT_TO_DOUBLE;
     }
     return 0;
 }
 
 int decode_expression(const char * str, double * res, char oper, int * step, char bracket) {
     const char * start = str;
-    int error = 0;
+    int error = NO_ERROR;
     int exp_step = 0;
     double exp_res = 0.0;
     char compute = 0;
@@ -103,23 +96,27 @@ int decode_expression(const char * str, double * res, char oper, int * step, cha
 
             if (!is_ll(oper)) {
                 *step = str - start;
-                return 0;
+                return NO_ERROR;
             }
 
             if ((error = decode_expression(str + 1, &exp_res, *str, &exp_step, bracket)))
                 return error;
 
             *res = *str == '+' ? *res + exp_res : *res - exp_res;
+
+            if (bracket) {
+                *step = (str - start + 1) + exp_step;
+                return NO_ERROR;
+            }
             str += exp_step;
             compute = 1;
-            bracket = 0;
         //*/
         } else if (!is_hl(*str)) {
-            if ((error = str_to_double(start, str, res)))
+            if (!compute && (error = str_to_double(start, str, res)))
                 return error;
 
             if (!is_hl(oper)) {
-                *step = str - start;
+                *step = (str - start + 1) + exp_step;
                 return 0;
             }
 
@@ -133,11 +130,9 @@ int decode_expression(const char * str, double * res, char oper, int * step, cha
             if (compute)
                 oper = '*';
             else {
-                error = str_to_double(start, str, res);
-
-                if (error == 0)
+                if ((error = str_to_double(start, str, res)) == NO_ERROR)
                     oper = '*';
-                else if (error > 1)
+                else if (error != ERROR_CONVERT_TO_DOUBLE)
                     return error;
             }
 
@@ -149,31 +144,61 @@ int decode_expression(const char * str, double * res, char oper, int * step, cha
             compute = 1;
         // }
         } else if (!is_eb(*str)) {
-            if ((error = check_end_bracket(bracket, *str)))
+            if ((error = check_end_bracket(bracket, str)))
                 return error;
-            if (!compute && str != start) {
+            if (!compute) {
                 if ((error = str_to_double(start, str, res)))
                     return error;
             }
-            *step = str - start + 1;
-            return 0;
+            *step = (str - start + 1) + exp_step;
+            return NO_ERROR;
         }
         str++;
     }
     if (bracket){
-        fprintf(stderr, "no end bracket\n");
-        return 1;
+        fprintf(stderr, "нет завершающей скобки: '^%s'\n", start);
+        return ERROR_NO_END_BRACKET;
     } else if (str == start) {
-        fprintf(stderr, "empty expression\n");
-        return 1;
+        fprintf(stderr, "пустое выражение: '^%s'\n", start);
+        return ERROR_EMPTY_EXPRESSION;
     }
     *step = str - start;
     if (compute)
-        return 0;
+        return NO_ERROR;
 
     return str_to_double(start, str, res);
 }
 
+typedef struct _TestData {
+    const char * string;
+    int res;
+} TestData;
+
+int tests() {
+    TestData test_list [] = {
+        {"()", ERROR_CONVERT_TO_DOUBLE},
+        {"(1)", NO_ERROR},
+        {"(1) 1", NO_ERROR},
+        {"(1) (1)", NO_ERROR},
+        {"(1) * 1", NO_ERROR},
+        {"(1+2)", NO_ERROR},
+        {"(1+2*3)", NO_ERROR},
+        {"(1+2*(3+70))", NO_ERROR},
+    };
+    int step;
+    double res;
+    int error = 0;
+    int i = 0;
+    for (; i < sizeof(test_list) / sizeof(TestData); i++) {
+        if (test_list[i].res != (error = decode_expression(test_list[i].string, &res, 0, &step, 0))) {
+            printf("test: %d \'%s\' error: %d\n", i, test_list[i].string, error);
+            return error;
+        } else {
+            printf("test: %d \'%s\' complete\n", i, test_list[i].string);
+        }
+    }
+    return error;
+}
 
 int main() {
     double res;
@@ -181,19 +206,24 @@ int main() {
     char * str = buffer;
     int step;
     int error;
-    printf("input expression: ");
+
+    if ((error = tests())){
+        return error;
+    }
+
+    printf("Введите выражение: ");
 
     while (1) {
         if (fgets(str, (&buffer[sizeof(buffer)]) - str, stdin) == NULL) {
-            fprintf(stderr, "cannot read line\n");
+            fprintf(stderr, "строка очень длинная\n");
             return 1;
         }
 
         error = decode_expression(buffer, &res, 0, &step, 0);
         if (error)
             return error;
-        printf("result: %f\n", res);
-        printf("press enter for exit or repeat:\n");
+        printf("результат: %f\n", res);
+        printf("Для выхода нажмите ENTER или введите выражение:\n");
 
         if ((buffer[0] = getchar()) == '\n')
             return 0;
