@@ -181,10 +181,9 @@ int main() {
     char * str = buffer;
     int step;
     int error;
+    printf("input expression: ");
 
     while (1) {
-        printf("input expression: ");
-
         if (fgets(str, (&buffer[sizeof(buffer)]) - str, stdin) == NULL) {
             fprintf(stderr, "cannot read line\n");
             return 1;
@@ -194,8 +193,7 @@ int main() {
         if (error)
             return error;
         printf("result: %f\n", res);
-        printf("press any key for repeat\n");
-        printf("press enter for exit\n");
+        printf("press enter for exit or repeat:\n");
 
         if ((buffer[0] = getchar()) == '\n')
             return 0;
