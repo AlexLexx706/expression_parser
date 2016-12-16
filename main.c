@@ -5,63 +5,22 @@
 
 const char START_BRACKET [] = {'{', '[', '('};
 const char END_BRACKET [] = {'}', ']', ')'};
-const char OPERATORS [] = {'+', '-', '/', '*'};
-const char SIGNS [] = {'+', '-'};
+const char LL_OPERATORS [] = {'-', '+'};
+const char HL_OPERATORS [] = {'/', '*'};
 
-
-char TEMP_STR_BUFFER[MAX_VALUE_LENGTH + 1];
-
-struct Tocken{
-    enum {
-        VALUE,
-        OPERATOR} type;
-
-    union {
-        double value;
-        char operator;
-    } data;
-};
-
-struct TockenArray{
-    struct Tocken * buffer;
-    unsigned int size;
-};
-
-void init_tocken_array(struct TockenArray * tockens) {
-    tockens->buffer = NULL;
-    tockens->size = 0;
-}
-
-void free_tocken_array(struct TockenArray * tockens) {
-    if (tockens->buffer) {
-        free(tockens->buffer);
+int check_end_bracket(char start_bracket, char end_backet) {
+    int i = 0;
+    for (; i < sizeof(START_BRACKET); i++) {
+        if (START_BRACKET[i] == start_bracket) {
+            if (END_BRACKET[i] != end_backet) {
+                fprintf(stderr, "wrong end backet: %c", end_backet);
+            }
+            return 0;
+        }
     }
-    tockens->buffer = NULL;
-    tockens->size = 0;
+    fprintf(stderr, "compare no bracket start:%c, end: %c", start_bracket, end_backet);
+    return 2;
 }
-
-int add_tocken(struct TockenArray * tockens, struct Tocken * data) {
-    struct Tocken * new_buffer = (struct Tocken *)realloc(
-        tockens->buffer, (tockens->size + 1) * sizeof(struct Tocken));
-
-    if (new_buffer == NULL){
-        fprintf(stderr, "cannot allocate Tockens buffer\n");
-        return 1;
-    }
-
-    new_buffer[tockens->size++] = *data;
-    tockens->buffer = new_buffer;
-    return 0;
-}
-
-int remove_tocken(struct TockenArray * tockens, int index) {
-    for (; index < tockens->size - 1; index++) {
-        tockens->buffer[index] = tockens->buffer[index + 1];
-    }
-    tockens->size--;
-    return 0;
-}
-
 
 int in_sequence(char ch, const char * sequence, unsigned int size) {
     int i = 0;
@@ -74,351 +33,173 @@ int in_sequence(char ch, const char * sequence, unsigned int size) {
     return 1;
 }
 
-int reduce_tockens(
-        struct TockenArray * in_tockens,
-        char operator) {
-
-    if (!in_tockens->size) {
-        fprintf(stderr, "empty tockens array\n");
-        return 1;
-    }
-    int error = 0;
-    int i = 1;
-
-    if (in_tockens->size == 1) {
-        return 0;
-    }
-
-    //1. выполним все операции умножения, сократим массив
-    do {
-        if (in_tockens->buffer[i].data.operator == operator) {
-            switch (in_tockens->buffer[i].data.operator) {
-                case '*':
-                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value *
-                        in_tockens->buffer[i + 1].data.value;
-                    break;
-                case '/':
-                    if (in_tockens->buffer[i + 1].data.value == 0.0) {
-                        fprintf(stderr, "devide by zerro\n");
-                        return 1;
-                    }
-                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value /
-                        in_tockens->buffer[i + 1].data.value;
-                    break;
-                case '+':
-                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value +
-                        in_tockens->buffer[i + 1].data.value;
-                    break;
-                case '-':
-                    in_tockens->buffer[i - 1].data.value = in_tockens->buffer[i - 1].data.value -
-                        in_tockens->buffer[i + 1].data.value;
-                    break;
-            }
-            remove_tocken(in_tockens, i);
-            remove_tocken(in_tockens, i);
-        } else {
-            i = i + 2;
-        }
-    } while(i < in_tockens->size);
-    return error;
+int is_ll(char ch){
+    return in_sequence(ch, LL_OPERATORS, sizeof(LL_OPERATORS));
 }
 
-int compute_expression(struct TockenArray * tockens, double * d_res) {
-    if (!tockens->size) {
-        fprintf(stderr, "empty expression\n");
-        return 1;
-    }
-    int i;
-    int error;
-
-    for (i = 0; i < tockens->size; i++) {
-        if (tockens->buffer[i].type == VALUE) {
-            printf("%f ", tockens->buffer[i].data.value);
-        } else {
-            printf("%c ", tockens->buffer[i].data.operator);
-        }
-    }
-    printf("\n");
-
-    //1. выполним все операции умножения, сократим массив
-    if (error=reduce_tockens(tockens, '*')) {
-        return error;
-    }
-
-    if (error=reduce_tockens(tockens, '/')) {
-        return error;
-    }
-
-    if (error=reduce_tockens(tockens, '+')){
-        return error;
-    }
-
-    if (error=reduce_tockens(tockens, '-')){
-        return error;
-    }
-
-    *d_res = tockens->buffer[0].data.value;
-    //printf("res: %f\n", *d_res);
-    return error;
+int is_hl(char ch){
+    return in_sequence(ch, HL_OPERATORS, sizeof(HL_OPERATORS));
 }
+
+int is_sb(char ch){
+    return in_sequence(ch, START_BRACKET, sizeof(START_BRACKET));
+}
+
+int is_eb(char ch){
+    return in_sequence(ch, END_BRACKET, sizeof(END_BRACKET));
+}
+
 
 
 int str_to_double(const char * start, const char * end, double * d_res){
-    char * buffer = TEMP_STR_BUFFER;
-    char * ukaszatel = NULL;
+    char buffer[MAX_VALUE_LENGTH + 1];
+    char * ch = buffer;
 
     //заполним вреенный буффер, исключаем пробелы
-    for (; start != end && buffer != &TEMP_STR_BUFFER[MAX_VALUE_LENGTH];
+    for (; start != end && ch != &buffer[MAX_VALUE_LENGTH];
             start++) {
         if (*start != ' ') {
-            *buffer=*start;
-            buffer++;
+            *ch = *start;
+            ch++;
         }
     }
-    if (buffer == TEMP_STR_BUFFER) {
-        fprintf(stderr, "empty value\n");
+    if (ch == buffer) {
+        *d_res = 0.0;
         return 1;
     }
-    *buffer = 0;
+
+    *ch = 0;
 
     // очень длинная строка
-    if (buffer == &TEMP_STR_BUFFER[MAX_VALUE_LENGTH]){
+    if (ch == &buffer[MAX_VALUE_LENGTH]){
         fprintf(stderr, "string: %s len > %d\n", buffer, MAX_VALUE_LENGTH);
         return 2;
     }
 
-    *d_res = strtod(TEMP_STR_BUFFER, &ukaszatel);
+    char * ukaszatel = NULL;
+    *d_res = strtod(buffer, &ukaszatel);
+
     if (*ukaszatel != 0){
-        fprintf(stderr, "cannot convert: %s to double\n", TEMP_STR_BUFFER);
+        fprintf(stderr, "cannot convert: %s to double\n", buffer);
         return 1;
     }
     return 0;
 }
 
-
-int extract_value(struct TockenArray * array, const char * start_tocken, const char * str) {
+int decode_expression(const char * str, double * res, char oper, int * step, char bracket) {
+    const char * start = str;
     int error = 0;
-    //распарсим значение
+    int exp_step = 0;
+    double exp_res = 0.0;
+    char compute = 0;
 
-    double d_res;
-    if (error = str_to_double(start_tocken, str, &d_res))
-        return error;
+    while (*str != 0 && *str != '\n') {
+        //+-
+        if (!is_ll(*str)) {
+            error = str_to_double(start, str, res);
 
-    //Добавили значение
-    struct Tocken tocken = {VALUE, d_res};
-    return add_tocken(array, &tocken);
-}
-
-int add_operator(struct TockenArray * array, char operator) {
-    struct Tocken tocken;
-    tocken.type = OPERATOR;
-    tocken.data.operator=operator;
-    return add_tocken(array, &tocken);
-}
-
-
-int extract_tockens(struct TockenArray * tockens, const char ** start_tocken, const char * str) {
-    int error = 0;
-    //найден оператор
-    if (!in_sequence(*str, OPERATORS, sizeof(OPERATORS))) {
-        //проверка знака числа
-        if (!tockens->size && *start_tocken == str) {
-            // не знак числа
-            if (in_sequence(*str, SIGNS, sizeof(SIGNS))) {
-                fprintf(stderr, "wrong operator: %c\n", *str);
-                return 1;
-            }
-            // игнорируем знак числа
-            return 0;
-        }
-        //распарсим значение
-        if (!tockens->size || tockens->buffer[tockens->size -1].type == OPERATOR) {
-            if (error = extract_value(tockens, *start_tocken, str))
+            if (error > 1)
                 return error;
-        }
 
-        if (error = add_operator(tockens, *str))
-            return error;
-        *start_tocken = NULL;
-    }
-    return error;
-}
-
-int check_empty_multiply_operator(
-        struct TockenArray * tockens, const char * start_tocken,
-        const char * str) {
-    int error = 0;
-
-    // умножения на число
-    if (!tockens->size) {
-        if (start_tocken == str)
-            return 0;
-
-        //выделим значение
-        if (error = extract_value(tockens, start_tocken, str))
-            return error;
-        if (error = add_operator(tockens, '*'))
-            return error;
-    //Добавим оператор
-    } else if (tockens->buffer[tockens->size - 1].type == VALUE) {
-        struct Tocken tocken = {OPERATOR, '*'};
-        if (error = add_tocken(tockens, &tocken))
-            return error;
-    }
-    return error;
-}
-
-int check_end_bracket(char start_bracket, char end_bracket) {
-    int i = 0;
-    for (; i < sizeof(START_BRACKET); i++) {
-        if (start_bracket == START_BRACKET[i]){
-            if (END_BRACKET[i] != end_bracket) {
-                fprintf(stderr, "wrong end '%c' bracket\n", end_bracket);
-                return 1;
-            }
-            return 0;
-        }
-    }
-    fprintf(stderr, "wrong start bracket: '%c'\n", start_bracket);
-    return 1;
-}
-int _analyze_expressions(const char ** in_str, const char * start_bracket, double * d_res) {
-    const char  * str = *in_str;
-    const char * start_tocken = str;
-    struct TockenArray tockens;
-    int error=0;
-    *d_res = 0.0;
-    init_tocken_array(&tockens);
-    while (*str != 0) {
-        //поиск конца
-        if (start_bracket) {
-            // найдено начало нового выражения
-            if (!in_sequence(*str, START_BRACKET, sizeof(START_BRACKET))) {
-                // умножения на число
-                if (error = check_empty_multiply_operator(
-                        &tockens, start_tocken, str)) {
-                    return error;
-                }
-
-                (*in_str)++;
-                // вычислим выражение
-                if (error = _analyze_expressions(in_str, str, d_res))
-                    break;
-                 // добавим токен в выражение
-                struct Tocken tocken = {VALUE, *d_res};
-
-                if (error = add_tocken(&tockens, &tocken))
-                    break;
-                start_tocken = NULL;
-            //окончание выражения
-            } else if (!in_sequence(*str, END_BRACKET, sizeof(END_BRACKET))) {
-                if (error = check_end_bracket(*start_bracket, *str))
-                    break;
-                //выделим число
-                if (!tockens.size || tockens.buffer[tockens.size - 1].type != VALUE) {
-                    if (error = extract_value(&tockens, start_tocken, str)) {
-                        return error;
-                    }
-                }
-                //вычислим выражение
-                error = compute_expression(&tockens, d_res);
-                free_tocken_array(&tockens);
+            if (!is_ll(oper)) {
+                *step = str - start;
                 return 0;
-            // выделение значений и операторов
-            } else {
-                if (error=extract_tockens(&tockens, &start_tocken, str))
-                    break;
             }
-        // поиск начала выражения
-        } else if (!in_sequence(*str, START_BRACKET, sizeof(START_BRACKET))) {
-            start_bracket = str;
 
-            if (error = check_empty_multiply_operator(
-                    &tockens, start_tocken, str)) {
+            if ((error = decode_expression(str + 1, &exp_res, *str, &exp_step, bracket)))
                 return error;
+
+            *res = *str == '+' ? *res + exp_res : *res - exp_res;
+            str += exp_step;
+            compute = 1;
+            bracket = 0;
+        //*/
+        } else if (!is_hl(*str)) {
+            if ((error = str_to_double(start, str, res)))
+                return error;
+
+            if (!is_hl(oper)) {
+                *step = str - start;
+                return 0;
             }
 
-            (*in_str)++;
-            // вычислим выражение
-            if (error = _analyze_expressions(in_str, str, d_res))
-                break;
-            start_bracket = NULL;
+            if ((error = decode_expression(str + 1, &exp_res, *str, &exp_step, bracket)))
+                return error;
+            *res = *str == '*' ? *res * exp_res : *res / exp_res;
+            *step = exp_step + (str - start) + 1;
+            return 0;
+        // {
+        } else if (!is_sb(*str)) {
+            if (compute)
+                oper = '*';
+            else {
+                error = str_to_double(start, str, res);
 
-            // добавим токен в выражение
-            struct Tocken tocken = {VALUE, *d_res};
+                if (error == 0)
+                    oper = '*';
+                else if (error > 1)
+                    return error;
+            }
 
-            if (error = add_tocken(&tockens, &tocken))
-                break;
-            start_tocken = NULL;
-        // выделение значений и операторов
-        } else {
-            if (error=extract_tockens(&tockens, &start_tocken, str))
-                break;
+            if ((error = decode_expression(str + 1, &exp_res, 0, &exp_step, *str)))
+                return error;
+
+            *res = *str == '*' ? *res * exp_res : exp_res;
+            str += exp_step;
+            compute = 1;
+        // }
+        } else if (!is_eb(*str)) {
+            if ((error = check_end_bracket(bracket, *str)))
+                return error;
+            if (!compute && str != start) {
+                if ((error = str_to_double(start, str, res)))
+                    return error;
+            }
+            *step = str - start + 1;
+            return 0;
         }
-
-        str = ++(*in_str);
-
-        if (start_tocken == NULL) {
-            start_tocken = str;
-        }
+        str++;
     }
-
-    if (!error) {
-        if (start_bracket != NULL) {
-            error = 1;
-            fprintf(stderr, "expression is not complete\n");
-        }
-
-        // вычислим выражение
-        if (tockens.size) {
-            if (tockens.buffer[tockens.size - 1].type == OPERATOR) {
-                error = extract_value(&tockens, start_tocken, str);
-            }
-
-            if (!error)
-                error = compute_expression(&tockens, d_res);
-        // выделим значение
-        } else {
-            if (!(error = extract_value(&tockens, start_tocken, str))) {
-                *d_res = tockens.buffer[tockens.size - 1].data.value;
-            }
-        }
+    if (bracket){
+        fprintf(stderr, "no end bracket\n");
+        return 1;
+    } else if (str == start) {
+        fprintf(stderr, "empty expression\n");
+        return 1;
     }
+    *step = str - start;
+    if (compute)
+        return 0;
 
-    free_tocken_array(&tockens);
-    return error;
-}
-
-const char * find_first_simbol(const char * str) {
-    const char * end = &str[strlen(str) + 1];
-    for (; str != end && *str == ' '; str++){}
-    return str;
-
-}
-int analyze_expressions(const char * _str, double * d_res) {
-    const char * str = find_first_simbol(_str);
-    return _analyze_expressions(&str, NULL, d_res);
+    return str_to_double(start, str, res);
 }
 
 
 int main() {
-    //const char * expression = "1+(1/(1*0.78))+2";
-    const char * expression = "(1+2)";
-    double d_res;
-    char temp_buffer[120];
-    printf("input expression: ");
-    //if (!fgets(temp_buffer, sizeof(temp_buffer), stdin)) {
-    if (!gets(temp_buffer)) {
-        fprintf(stderr, "cannot read line\n");
-        return 1;
-    }
-    //const char * expression = "1";
-    int error = analyze_expressions(temp_buffer, &d_res);
-    //int error = analyze_expressions(expression, &d_res);
+    double res;
+    char buffer[120];
+    char * str = buffer;
+    int step;
+    int error;
 
-    if (!error) {
-        printf("expression: %s result: %f\n", temp_buffer, d_res);
-        //printf("expression: %s result: %f\n", expression, d_res);
+    while (1) {
+        printf("input expression: ");
+
+        if (fgets(str, (&buffer[sizeof(buffer)]) - str, stdin) == NULL) {
+            fprintf(stderr, "cannot read line\n");
+            return 1;
+        }
+
+        error = decode_expression(buffer, &res, 0, &step, 0);
+        if (error)
+            return error;
+        printf("result: %f\n", res);
+        printf("press any key for repeat\n");
+        printf("press enter for exit\n");
+
+        if ((buffer[0] = getchar()) == '\n')
+            return 0;
+        str = &buffer[1];
     }
     return 0;
 }
