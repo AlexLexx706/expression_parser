@@ -77,30 +77,35 @@ double compute_operation(char expression_operator, double left, double right){
     return 0.0;
 }
 
+int read_value(double * value, const char ** str, char * cur_operator, char * has_value){
+    char * endptr = 0;
+    *value = strtod(*str, &endptr);
+
+    if (*value ==  HUGE_VAL) {
+        fprintf(stderr, "очень длинное число: '^%s'\n", *str);
+        return ERROR_HUGE_VAL;
+    }
+    *has_value = *str != endptr;
+    *str = endptr;
+    *cur_operator = *endptr;
+    return NO_ERROR;
+}
+
 int _decode_expression(const char ** str, double * res, char last_operator, char bracket) {
-    const char * start = *str;
     int error = NO_ERROR;
     double exp_res = 0.0;
     char compute = 0;
-    char * endptr = 0;
     char cur_operator = 0;
     char has_value = 0;
     double value;
 
-    for(;;) {
-        value = strtod(*str, &endptr);
+    while(1) {
+        if ((error = read_value(&value, str, &cur_operator, &has_value)))
+            return error;
 
-        if (value ==  HUGE_VAL) {
-            fprintf(stderr, "очень длинное число: '^%s'\n", start);
-            return ERROR_HUGE_VAL;
-        }
-        has_value = *str != endptr;
-        *str = endptr;
-        cur_operator = *endptr;
-
-        //+-
-        if (!is_ll(cur_operator)) {
-            if (!is_ll(last_operator)) {
+        //+- or */
+        if (!is_ll(cur_operator) || !is_hl(cur_operator)) {
+            if (cur_operator == last_operator) {
                 *res = value;
                 return NO_ERROR;
             }
@@ -114,23 +119,6 @@ int _decode_expression(const char ** str, double * res, char last_operator, char
                 return NO_ERROR;
             }
             compute = 1;
-        //*/
-        } else if (!is_hl(cur_operator)) {
-            if (!is_hl(last_operator)) {
-                *res = value;
-                return NO_ERROR;
-            }
-            (*str)++;
-            if ((error = _decode_expression(str, &exp_res, cur_operator, bracket)))
-                return error;
-            *res = compute_operation(cur_operator, has_value ? value : *res, exp_res);
-
-            if (!is_sb(last_operator) && !is_eb(**str)) {
-                (*str)++;
-                return NO_ERROR;
-            }
-            compute = 1;
-        // {
         } else if (!is_sb(cur_operator)) {
             (*str)++;
 
@@ -148,7 +136,7 @@ int _decode_expression(const char ** str, double * res, char last_operator, char
                 return error;
 
             if (!compute && !has_value) {
-                fprintf(stderr, "пустое выражение: '^%s'\n", start);
+                fprintf(stderr, "пустое выражение: '^%s'\n", *str);
                 return ERROR_EMPTY_EXPRESSION;
             }
             if (has_value)
@@ -161,17 +149,16 @@ int _decode_expression(const char ** str, double * res, char last_operator, char
         } else if (**str == 0 || **str == '\n')
             break;
         else {
-            fprintf(stderr, "неизвестный оператор: '^%s'\n", start);
+            fprintf(stderr, "неизвестный оператор: '^%s'\n", *str);
             return ERROR_EMPTY_EXPRESSION;
         }
-
     }
 
     if (bracket){
-        fprintf(stderr, "нет завершающей скобки: '^%s'\n", start);
+        fprintf(stderr, "нет завершающей скобки: '^%s'\n", *str);
         return ERROR_NO_END_BRACKET;
     } else if (!has_value && !compute) {
-        fprintf(stderr, "пустое выражение: '^%s'\n", start);
+        fprintf(stderr, "пустое выражение: '^%s'\n", *str);
         return ERROR_EMPTY_EXPRESSION;
     }
 
@@ -201,38 +188,44 @@ int decode_expression(const char * str, double * res) {
     }
     *pointer = 0;
     pointer = temp_buffer;
-    return _decode_expression(&pointer, res, 0, 0);
+    *res = 0.0;
+    return _decode_expression((const char **)&pointer, res, 0, 0);
 }
 
 
 
 typedef struct _TestData {
     const char * string;
-    int res;
+    int error;
+    double res;
 } TestData;
 
 int tests() {
     TestData test_list [] = {
-        {"1 * (1*2*(5 + 6))", NO_ERROR},
-        {"1 * (1+2)", NO_ERROR},
-        {"()", ERROR_EMPTY_EXPRESSION},
-        {"(1)", NO_ERROR},
-        {"(1) 1", NO_ERROR},
-        {"(1) (1)", NO_ERROR},
-        {"(1) * 1", NO_ERROR},
-        {"(1+2)", NO_ERROR},
-        {"(1+2*3)", NO_ERROR},
-        {"(1+2*(3+70))", NO_ERROR},
+        {"1 * (1*2*(5 + 6))", NO_ERROR, 22.0},
+        {"1 * (1+2)", NO_ERROR, 3},
+        {"()", ERROR_EMPTY_EXPRESSION, 0},
+        {"(1)", NO_ERROR, 1},
+        {"(1) 1", NO_ERROR, 1},
+        {"(1) (1)", NO_ERROR, 1},
+        {"(1) * 1", NO_ERROR, 1},
+        {"(1+2)", NO_ERROR, 2},
+        {"(1+2*3)", NO_ERROR, 7.0},
+        {"(1+2*(3+70))", NO_ERROR, 147},
     };
     double res;
     int error = 0;
     int i = 0;
     for (; i < sizeof(test_list) / sizeof(TestData); i++) {
-        if (test_list[i].res != (error = decode_expression(test_list[i].string, &res))) {
+        if (test_list[i].error != (error = decode_expression(test_list[i].string, &res))) {
             printf("test: %d \'%s\' error: %d\n", i, test_list[i].string, error);
             return error;
         } else {
-            printf("test: %d \'%s\' complete res: %f\n", i, test_list[i].string, res);
+            if (res == test_list[i].res) {
+                printf("test: %d \'%s\' complete res: %f\n", i, test_list[i].string, res);
+            } else {
+                printf("test: %d \'%s\' res: %f != test.res: %f\n", i, test_list[i].string, res, test_list[i].res);
+            }
         }
     }
     return error;
