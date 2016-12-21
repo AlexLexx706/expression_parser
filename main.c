@@ -168,6 +168,8 @@ int _decode_expression(const char ** str, double * res, char last_operator, char
 
     if (!compute)
         *res = value;
+    else if (has_value)
+        *res = compute_operation('*', *res, value);
     return NO_ERROR;
 }
 
@@ -206,6 +208,7 @@ typedef struct _TestData {
 
 int tests() {
     TestData test_list [] = {
+        {"2(2+3)2", NO_ERROR, 20.0},
         {"12+*45", ERROR_WRONG_OPERATORS_SEQUENCE, 0},
         {"1 * (1*2*(5 + 6))", NO_ERROR, 22.0},
         {"1 * (1+2)", NO_ERROR, 3},
