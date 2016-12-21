@@ -14,6 +14,7 @@
 #define ERROR_NO_END_BRACKET 8
 #define ERROR_HUGE_VAL 9
 #define ERROR_BAD_PARAMS 10
+#define ERROR_WRONG_OPERATORS_SEQUENCE 11
 
 
 const char START_BRACKET [] = {'{', '[', '('};
@@ -108,6 +109,9 @@ int _decode_expression(const char ** str, double * res, char last_operator, char
             if (cur_operator == last_operator) {
                 *res = value;
                 return NO_ERROR;
+            } else if (!has_value && !is_ll(last_operator) && !is_hl(cur_operator)) {
+                fprintf(stderr, "не верная последовательность операторов\n");
+                return ERROR_WRONG_OPERATORS_SEQUENCE;
             }
             (*str)++;
             if ((error = _decode_expression(str, &exp_res, cur_operator, bracket)))
@@ -202,6 +206,7 @@ typedef struct _TestData {
 
 int tests() {
     TestData test_list [] = {
+        {"12+*45", ERROR_WRONG_OPERATORS_SEQUENCE, 0},
         {"1 * (1*2*(5 + 6))", NO_ERROR, 22.0},
         {"1 * (1+2)", NO_ERROR, 3},
         {"()", ERROR_EMPTY_EXPRESSION, 0},
@@ -240,7 +245,6 @@ int main() {
     if ((error = tests())){
         return error;
     }
-
     printf("Введите выражение: ");
 
     while (1) {
